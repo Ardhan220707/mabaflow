@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, CheckSquare, CalendarDays, Sparkles } from "lucide-react";
+import { Home, CheckSquare } from "lucide-react";
 
 const navItems = [
   {

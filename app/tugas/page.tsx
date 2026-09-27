@@ -1,113 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { useTaskStore } from "@/stores/task-store";
 import { Plus } from "lucide-react";
 
 import TaskCard, { type Task } from "@/components/tasks/tasks-card";
 import TaskProgress from "@/components/tasks/tasks-progress";
 import AddTaskForm from "@/components/tasks/add-task-form";
 
-const initialTasks: Task[] = [
-  {
-    id: 1,
-    title: "Membaca materi Sistem Informasi",
-    course: "Sistem Informasi",
-    dueDate: "2026-09-29",
-    estimatedMinutes: 60,
-    expectedOutput: "Ringkasan materi",
-    priority: "Sedang",
-    completed: false,
-    subtasks: [
-      {
-        id: 1,
-        title: "Kumpulkan materi Sistem Informasi",
-        estimatedMinutes: 20,
-        completed: false,
-      },
-      {
-        id: 2,
-        title: "Baca dan pahami materi",
-        estimatedMinutes: 25,
-        completed: false,
-      },
-      {
-        id: 3,
-        title: "Buat ringkasan materi",
-        estimatedMinutes: 15,
-        completed: false,
-      },
-    ],
-  },
-  {
-    id: 2,
-    title: "Mengerjakan tugas Algoritma",
-    course: "Algoritma",
-    dueDate: "2026-09-30",
-    estimatedMinutes: 120,
-    expectedOutput: "File tugas Algoritma",
-    priority: "Tinggi",
-    completed: false,
-    subtasks: [
-      {
-        id: 1,
-        title: "Baca soal dan pahami ketentuan",
-        estimatedMinutes: 20,
-        completed: false,
-      },
-      {
-        id: 2,
-        title: "Buat algoritma penyelesaian",
-        estimatedMinutes: 30,
-        completed: false,
-      },
-      {
-        id: 3,
-        title: "Implementasikan solusi",
-        estimatedMinutes: 50,
-        completed: false,
-      },
-      {
-        id: 4,
-        title: "Testing dan perbaikan",
-        estimatedMinutes: 20,
-        completed: false,
-      },
-    ],
-  },
-  {
-    id: 3,
-    title: "Review materi minggu ini",
-    course: "Pemrograman Web",
-    dueDate: "2026-10-03",
-    estimatedMinutes: 45,
-    expectedOutput: "Catatan review",
-    priority: "Rendah",
-    completed: true,
-    subtasks: [
-      {
-        id: 1,
-        title: "Baca kembali materi",
-        estimatedMinutes: 15,
-        completed: true,
-      },
-      {
-        id: 2,
-        title: "Tandai bagian yang belum dipahami",
-        estimatedMinutes: 10,
-        completed: true,
-      },
-      {
-        id: 3,
-        title: "Buat catatan review",
-        estimatedMinutes: 20,
-        completed: true,
-      },
-    ],
-  },
-];
-
 export default function TugasPage() {
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const tasks = useTaskStore((state) => state.tasks);
+
   const [showForm, setShowForm] = useState(false);
 
   const [title, setTitle] = useState("");
@@ -119,48 +22,11 @@ export default function TugasPage() {
 
   const [priority, setPriority] = useState<Task["priority"]>("Sedang");
 
-  function toggleTask(id: number) {
-    setTasks((currentTasks) =>
-      currentTasks.map((task) =>
-        task.id === id
-          ? {
-              ...task,
-              completed: !task.completed,
-            }
-          : task,
-      ),
-    );
-  }
+  const toggleTask = useTaskStore((state) => state.toggleTask);
 
-  function toggleSubTask(taskId: number, subTaskId: number) {
-    setTasks((currentTasks) =>
-      currentTasks.map((task) => {
-        if (task.id !== taskId) {
-          return task;
-        }
+  const toggleSubTask = useTaskStore((state) => state.toggleSubTask);
 
-        const updatedSubtasks = task.subtasks.map((subTask) =>
-          subTask.id === subTaskId
-            ? {
-                ...subTask,
-                completed: !subTask.completed,
-              }
-            : subTask,
-        );
-
-        const hasSubtasks = updatedSubtasks.length > 0;
-
-        const allSubtasksCompleted =
-          hasSubtasks && updatedSubtasks.every((subTask) => subTask.completed);
-
-        return {
-          ...task,
-          subtasks: updatedSubtasks,
-          completed: allSubtasksCompleted,
-        };
-      }),
-    );
-  }
+  const addTaskToStore = useTaskStore((state) => state.addTask);
 
   function addTask() {
     if (!title.trim()) {
@@ -179,7 +45,7 @@ export default function TugasPage() {
       subtasks: [],
     };
 
-    setTasks((currentTasks) => [...currentTasks, newTask]);
+    addTaskToStore(newTask);
 
     setTitle("");
     setCourse("");
@@ -191,8 +57,6 @@ export default function TugasPage() {
   }
 
   const completedTasks = tasks.filter((task) => task.completed).length;
-
-  // const progress = total === 0 ? 0 : Math.round((completed / total) * 100);
 
   return (
     <main className="min-h-screen p-6">
