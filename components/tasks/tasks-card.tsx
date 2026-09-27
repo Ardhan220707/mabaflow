@@ -4,6 +4,13 @@ import { useState } from "react";
 import { CalendarDays, Clock3, Sparkles } from "lucide-react";
 import TaskBreakdown from "../ai/task-breakdown";
 
+export type SubTask = {
+  id: number;
+  title: string;
+  estimatedMinutes: number;
+  completed: boolean;
+};
+
 export type Task = {
   id: number;
   title: string;
@@ -13,15 +20,31 @@ export type Task = {
   expectedOutput: string;
   priority: "Rendah" | "Sedang" | "Tinggi";
   completed: boolean;
+  subtasks: SubTask[];
 };
 
 type TaskCardProps = {
   task: Task;
   onToggle: (id: number) => void;
+  onToggleSubTask: (taskId: number, subTaskId: number) => void;
 };
 
-export default function TaskCard({ task, onToggle }: TaskCardProps) {
+export default function TaskCard({
+  task,
+  onToggle,
+  onToggleSubTask,
+}: TaskCardProps) {
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const completedSubTasks = task.subtasks.filter(
+    (subTask) => subTask.completed,
+  ).length;
+
+  const totalSubTasks = task.subtasks.length;
+
+  const subTaskProgress =
+    totalSubTasks === 0
+      ? 0
+      : Math.round((completedSubTasks / totalSubTasks) * 100);
   return (
     <article
       className={`rounded-2xl border p-4 ${
@@ -93,6 +116,29 @@ export default function TaskCard({ task, onToggle }: TaskCardProps) {
 
           {/* Expected Output */}
           <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2">
+            {/* Subtask Progress */}
+            {totalSubTasks > 0 && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-medium text-slate-400">
+                    Progress langkah
+                  </p>
+
+                  <p className="text-[11px] font-semibold text-slate-500">
+                    {completedSubTasks}/{totalSubTasks} · {subTaskProgress}%
+                  </p>
+                </div>
+
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-slate-900 transition-all duration-300"
+                    style={{
+                      width: `${subTaskProgress}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
             <p className="text-[11px] font-medium text-slate-400">Output</p>
 
             <p className="mt-1 text-xs font-medium text-slate-600">
@@ -113,18 +159,13 @@ export default function TaskCard({ task, onToggle }: TaskCardProps) {
           {showBreakdown && (
             <TaskBreakdown
               taskTitle={task.title}
+              subtasks={task.subtasks}
+              onToggleSubTask={(subTaskId) =>
+                onToggleSubTask(task.id, subTaskId)
+              }
               onClose={() => setShowBreakdown(false)}
             />
           )}
-
-          {/* Expected Output */}
-          <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2">
-            <p className="text-[11px] font-medium text-slate-400">Output</p>
-
-            <p className="mt-1 text-xs font-medium text-slate-600">
-              {task.expectedOutput}
-            </p>
-          </div>
         </div>
       </div>
     </article>

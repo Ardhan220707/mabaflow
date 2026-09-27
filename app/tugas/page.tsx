@@ -17,6 +17,26 @@ const initialTasks: Task[] = [
     expectedOutput: "Ringkasan materi",
     priority: "Sedang",
     completed: false,
+    subtasks: [
+      {
+        id: 1,
+        title: "Kumpulkan materi Sistem Informasi",
+        estimatedMinutes: 20,
+        completed: false,
+      },
+      {
+        id: 2,
+        title: "Baca dan pahami materi",
+        estimatedMinutes: 25,
+        completed: false,
+      },
+      {
+        id: 3,
+        title: "Buat ringkasan materi",
+        estimatedMinutes: 15,
+        completed: false,
+      },
+    ],
   },
   {
     id: 2,
@@ -27,6 +47,32 @@ const initialTasks: Task[] = [
     expectedOutput: "File tugas Algoritma",
     priority: "Tinggi",
     completed: false,
+    subtasks: [
+      {
+        id: 1,
+        title: "Baca soal dan pahami ketentuan",
+        estimatedMinutes: 20,
+        completed: false,
+      },
+      {
+        id: 2,
+        title: "Buat algoritma penyelesaian",
+        estimatedMinutes: 30,
+        completed: false,
+      },
+      {
+        id: 3,
+        title: "Implementasikan solusi",
+        estimatedMinutes: 50,
+        completed: false,
+      },
+      {
+        id: 4,
+        title: "Testing dan perbaikan",
+        estimatedMinutes: 20,
+        completed: false,
+      },
+    ],
   },
   {
     id: 3,
@@ -37,6 +83,26 @@ const initialTasks: Task[] = [
     expectedOutput: "Catatan review",
     priority: "Rendah",
     completed: true,
+    subtasks: [
+      {
+        id: 1,
+        title: "Baca kembali materi",
+        estimatedMinutes: 15,
+        completed: true,
+      },
+      {
+        id: 2,
+        title: "Tandai bagian yang belum dipahami",
+        estimatedMinutes: 10,
+        completed: true,
+      },
+      {
+        id: 3,
+        title: "Buat catatan review",
+        estimatedMinutes: 20,
+        completed: true,
+      },
+    ],
   },
 ];
 
@@ -66,6 +132,36 @@ export default function TugasPage() {
     );
   }
 
+  function toggleSubTask(taskId: number, subTaskId: number) {
+    setTasks((currentTasks) =>
+      currentTasks.map((task) => {
+        if (task.id !== taskId) {
+          return task;
+        }
+
+        const updatedSubtasks = task.subtasks.map((subTask) =>
+          subTask.id === subTaskId
+            ? {
+                ...subTask,
+                completed: !subTask.completed,
+              }
+            : subTask,
+        );
+
+        const hasSubtasks = updatedSubtasks.length > 0;
+
+        const allSubtasksCompleted =
+          hasSubtasks && updatedSubtasks.every((subTask) => subTask.completed);
+
+        return {
+          ...task,
+          subtasks: updatedSubtasks,
+          completed: allSubtasksCompleted,
+        };
+      }),
+    );
+  }
+
   function addTask() {
     if (!title.trim()) {
       return;
@@ -80,6 +176,7 @@ export default function TugasPage() {
       expectedOutput: expectedOutput.trim() || "Belum ditentukan",
       priority,
       completed: false,
+      subtasks: [],
     };
 
     setTasks((currentTasks) => [...currentTasks, newTask]);
@@ -153,7 +250,12 @@ export default function TugasPage() {
         {/* tasks.map */}
         <div className="mt-3 space-y-3">
           {tasks.map((task) => (
-            <TaskCard key={task.id} task={task} onToggle={toggleTask} />
+            <TaskCard
+              key={task.id}
+              task={task}
+              onToggle={toggleTask}
+              onToggleSubTask={toggleSubTask}
+            />
           ))}
         </div>
       </section>

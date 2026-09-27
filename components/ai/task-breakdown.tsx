@@ -1,70 +1,32 @@
 "use client";
 
-import { useState } from "react";
-
-type SubTask = {
-  id: number;
-  title: string;
-  estimatedMinutes: number;
-};
+import type { SubTask } from "@/components/tasks/tasks-card";
 
 type TaskBreakdownProps = {
   taskTitle: string;
+  subtasks: SubTask[];
+  onToggleSubTask: (subTaskId: number) => void;
   onClose: () => void;
 };
 
-const dummySubTasks: SubTask[] = [
-  {
-    id: 1,
-    title: "Kumpulkan materi dan data",
-    estimatedMinutes: 20,
-  },
-  {
-    id: 2,
-    title: "Buat struktur laporan",
-    estimatedMinutes: 15,
-  },
-  {
-    id: 3,
-    title: "Tulis pembahasan",
-    estimatedMinutes: 45,
-  },
-  {
-    id: 4,
-    title: "Buat kesimpulan",
-    estimatedMinutes: 15,
-  },
-  {
-    id: 5,
-    title: "Rapikan dan export PDF",
-    estimatedMinutes: 25,
-  },
-];
-
 export default function TaskBreakdown({
   taskTitle,
+  subtasks,
+  onToggleSubTask,
   onClose,
 }: TaskBreakdownProps) {
-  const [completedSubTasks, setCompletedSubTasks] = useState<number[]>([]);
+  const completedCount = subtasks.filter((subTask) => subTask.completed).length;
 
-  const completedCount = completedSubTasks.length;
-  const totalSubTasks = dummySubTasks.length;
+  const totalSubTasks = subtasks.length;
 
   const progress =
     totalSubTasks === 0
       ? 0
       : Math.round((completedCount / totalSubTasks) * 100);
 
-  function toggleSubTask(id: number) {
-    setCompletedSubTasks((current) =>
-      current.includes(id)
-        ? current.filter((subTaskId) => subTaskId !== id)
-        : [...current, id],
-    );
-  }
-
   return (
     <section className="mt-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium text-slate-400">AI Breakdown</p>
@@ -83,6 +45,7 @@ export default function TaskBreakdown({
         </button>
       </div>
 
+      {/* Progress */}
       <div className="mt-4">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium text-slate-500">Progress</span>
@@ -102,31 +65,40 @@ export default function TaskBreakdown({
         </div>
       </div>
 
+      {/* Subtasks */}
       <div className="mt-4 space-y-2">
-        {dummySubTasks.map((subTask) => {
-          const isCompleted = completedSubTasks.includes(subTask.id);
+        {subtasks.length === 0 ? (
+          <div className="rounded-xl bg-slate-50 px-3 py-4 text-center">
+            <p className="text-xs font-medium text-slate-500">
+              Belum ada subtask
+            </p>
 
-          return (
+            <p className="mt-1 text-[11px] text-slate-400">
+              AI akan membantu memecah tugas ini menjadi beberapa langkah.
+            </p>
+          </div>
+        ) : (
+          subtasks.map((subTask) => (
             <button
               key={subTask.id}
               type="button"
-              onClick={() => toggleSubTask(subTask.id)}
+              onClick={() => onToggleSubTask(subTask.id)}
               className="flex w-full items-center justify-between rounded-xl bg-slate-50 px-3 py-3 text-left transition hover:bg-slate-100"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <div
                   className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${
-                    isCompleted
+                    subTask.completed
                       ? "border-slate-900 bg-slate-900 text-white"
                       : "border-slate-200 bg-white text-slate-500"
                   }`}
                 >
-                  {isCompleted ? "✓" : subTask.id}
+                  {subTask.completed ? "✓" : subTask.id}
                 </div>
 
                 <p
                   className={`text-xs font-medium ${
-                    isCompleted
+                    subTask.completed
                       ? "text-slate-400 line-through"
                       : "text-slate-700"
                   }`}
@@ -137,14 +109,14 @@ export default function TaskBreakdown({
 
               <span
                 className={`ml-3 shrink-0 text-xs ${
-                  isCompleted ? "text-slate-300" : "text-slate-400"
+                  subTask.completed ? "text-slate-300" : "text-slate-400"
                 }`}
               >
                 {subTask.estimatedMinutes} mnt
               </span>
             </button>
-          );
-        })}
+          ))
+        )}
       </div>
     </section>
   );
