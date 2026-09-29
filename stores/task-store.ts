@@ -16,6 +16,8 @@ type TaskStore = {
     completed: boolean,
   ) => void;
 
+  setTaskCompleted: (taskId: number, completed: boolean) => void;
+
   addTask: (task: Task) => void;
 };
 
@@ -191,6 +193,18 @@ export const useTaskStore = create<TaskStore>((set) => ({
           completed: allSubtasksCompleted,
         };
       }),
+    })),
+
+  setTaskCompleted: (taskId, completed) =>
+    set((state) => ({
+      tasks: state.tasks.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              completed,
+            }
+          : task,
+      ),
     })),
 
   addTask: (task) =>

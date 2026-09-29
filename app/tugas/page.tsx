@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useTaskStore } from "@/stores/task-store";
+import { usePlannerStore } from "@/stores/planner-store";
 import { Plus } from "lucide-react";
 
 import TaskCard, { type Task } from "@/components/tasks/tasks-card";
@@ -27,6 +28,28 @@ export default function TugasPage() {
   const toggleSubTask = useTaskStore((state) => state.toggleSubTask);
 
   const addTaskToStore = useTaskStore((state) => state.addTask);
+
+  const addPlannerItem = usePlannerStore((state) => state.addPlannerItem);
+
+  function addTaskToPlanner(
+    task: Task,
+    schedule: {
+      date: string;
+      startTime: string;
+      endTime: string;
+    },
+  ) {
+    addPlannerItem({
+      id: Date.now(),
+      taskId: task.id,
+      subTaskId: null,
+      title: task.title,
+      date: schedule.date,
+      startTime: schedule.startTime,
+      endTime: schedule.endTime,
+      completed: false,
+    });
+  }
 
   function addTask() {
     if (!title.trim()) {
@@ -119,6 +142,7 @@ export default function TugasPage() {
               task={task}
               onToggle={toggleTask}
               onToggleSubTask={toggleSubTask}
+              onAddToPlanner={addTaskToPlanner}
             />
           ))}
         </div>

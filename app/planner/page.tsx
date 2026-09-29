@@ -13,6 +13,8 @@ export default function PlannerPage() {
     (state) => state.setSubTaskCompleted,
   );
 
+  const setTaskCompleted = useTaskStore((state) => state.setTaskCompleted);
+
   const completedPlannerItems = plannerItems.filter(
     (item) => item.completed,
   ).length;
@@ -117,46 +119,7 @@ export default function PlannerPage() {
                 </div>
 
                 {/* Jadwal */}
-                {/* <div
-                  className={`min-w-0 flex-1 rounded-2xl border p-4 ${
-                    item.completed
-                      ? "border-slate-200 bg-slate-50"
-                      : "border-slate-200 bg-white"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const nextCompleted = !item.completed;
 
-                      togglePlannerItem(item.id);
-
-                      if (item.subTaskId !== null) {
-                        setSubTaskCompleted(
-                          item.taskId,
-                          item.subTaskId,
-                          nextCompleted,
-                        );
-                      }
-                    }}
-                  >
-                    {item.completed && (
-                      <span className="text-xs text-white">✓</span>
-                    )}
-                  </button>
-
-                  <h3 className="text-sm font-semibold text-slate-900">
-                    {item.title}
-                  </h3>
-
-                  <div className="mt-2 flex items-center gap-1 text-xs text-slate-400">
-                    <Clock3 size={13} />
-
-                    <span>
-                      {item.startTime} - {item.endTime}
-                    </span>
-                  </div>
-                </div> */}
                 <div className="flex items-start gap-3">
                   <button
                     type="button"
@@ -171,13 +134,10 @@ export default function PlannerPage() {
                           item.subTaskId,
                           nextCompleted,
                         );
+                      } else {
+                        setTaskCompleted(item.taskId, nextCompleted);
                       }
                     }}
-                    aria-label={
-                      item.completed
-                        ? "Tandai jadwal belum selesai"
-                        : "Tandai jadwal selesai"
-                    }
                     className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
                       item.completed
                         ? "border-slate-900 bg-slate-900"
