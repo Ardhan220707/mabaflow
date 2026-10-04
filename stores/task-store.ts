@@ -26,7 +26,7 @@ const initialTasks: Task[] = [
     id: 1,
     title: "Membaca materi Sistem Informasi",
     course: "Sistem Informasi",
-    dueDate: "2026-09-29",
+    dueDate: "2026-10-20",
     estimatedMinutes: 60,
     expectedOutput: "Ringkasan materi",
     priority: "Sedang",

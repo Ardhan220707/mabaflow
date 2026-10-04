@@ -1,7 +1,9 @@
+import MabaFlowCalendar from "@/components/dashboard/mabaflow-calendar";
 export default function BerandaPage() {
   return (
     <main className="min-h-screen p-6">
       {/* Header */}
+      <MabaFlowCalendar />
       <section>
         <p className="text-sm text-slate-500">Selamat Datang di</p>
         <h1 className="mt-1 text-2xl font-bold text-slate-900">MabaFlow</h1>
