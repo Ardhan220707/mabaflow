@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 
 export type PlannerItem = {
   id: number;
@@ -13,9 +14,7 @@ export type PlannerItem = {
 
 type PlannerStore = {
   plannerItems: PlannerItem[];
-
   addPlannerItem: (item: PlannerItem) => void;
-
   togglePlannerItem: (id: number) => void;
 };
 
@@ -42,23 +41,36 @@ const initialPlannerItems: PlannerItem[] = [
   },
 ];
 
-export const usePlannerStore = create<PlannerStore>((set) => ({
-  plannerItems: initialPlannerItems,
+export const usePlannerStore = create<PlannerStore>()(
+  persist(
+    (set) => ({
+      plannerItems: initialPlannerItems,
 
-  addPlannerItem: (item) =>
-    set((state) => ({
-      plannerItems: [...state.plannerItems, item],
-    })),
+      addPlannerItem: (item) =>
+        set((state) => {
+          const alreadyExists = state.plannerItems.some(
+            (existingItem) => existingItem.id === item.id,
+          );
 
-  togglePlannerItem: (id) =>
-    set((state) => ({
-      plannerItems: state.plannerItems.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              completed: !item.completed,
-            }
-          : item,
-      ),
-    })),
-}));
+          if (alreadyExists) {
+            return state;
+          }
+
+          return {
+            plannerItems: [...state.plannerItems, item],
+          };
+        }),
+
+      togglePlannerItem: (id) =>
+        set((state) => ({
+          plannerItems: state.plannerItems.map((item) =>
+            item.id === id ? { ...item, completed: !item.completed } : item,
+          ),
+        })),
+    }),
+    {
+      name: "mabaflow-planner",
+      storage: createJSONStorage(() => localStorage),
+    },
+  ),
+);

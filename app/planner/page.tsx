@@ -1,30 +1,56 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { CalendarDays, Clock3 } from "lucide-react";
+import { Clock3 } from "lucide-react";
 import { usePlannerStore } from "@/stores/planner-store";
 import { useTaskStore } from "@/stores/task-store";
+import MabaFlowCalendar from "@/components/dashboard/mabaflow-calendar";
 
-export default function PlannerPage() {
+function getTodayDate() {
+  const today = new Date();
+
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(today.getDate()).padStart(2, "0")}`;
+}
+
+function formatDateLabel(dateString: string) {
+  const [year, month, day] = dateString.split("-").map(Number);
+
+  return new Date(year, month - 1, day).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function PlannerContent() {
   const searchParams = useSearchParams();
   const selectedItemId = searchParams.get("item");
+  const dateFromUrl = searchParams.get("date");
+
   const plannerItems = usePlannerStore((state) => state.plannerItems);
+
   const selectedItem = plannerItems.find(
     (item) => String(item.id) === selectedItemId,
   );
 
-  const selectedDate = selectedItem?.date ?? "2026-09-28";
+  const selectedDate = dateFromUrl || selectedItem?.date || getTodayDate();
 
-  const displayedPlannerItems = plannerItems.filter(
-    (item) => item.date === selectedDate,
-  );
+  const isToday = selectedDate === getTodayDate();
+
+  const displayedPlannerItems = plannerItems
+    .filter((item) => item.date === selectedDate)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   const togglePlannerItem = usePlannerStore((state) => state.togglePlannerItem);
 
   const setSubTaskCompleted = useTaskStore(
     (state) => state.setSubTaskCompleted,
   );
+
   const setTaskCompleted = useTaskStore((state) => state.setTaskCompleted);
 
   const completedPlannerItems = displayedPlannerItems.filter(
@@ -37,47 +63,37 @@ export default function PlannerPage() {
       : Math.round(
           (completedPlannerItems / displayedPlannerItems.length) * 100,
         );
+
   return (
     <main className="min-h-screen p-6">
       <section>
         <p className="text-sm text-slate-500">Daily Planner</p>
+
         <h1 className="mt-1 text-2xl font-bold text-slate-900">Planner</h1>
+
         <p className="mt-2 text-sm text-slate-500">
           Atur aktivitasmu berdasarkan waktu.
         </p>
       </section>
 
-      <section className="mt-6 rounded-2xl border border-slate-200 bg-slate-900 p-4 text-white">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10">
-            <CalendarDays size={20} />
-          </div>
-          <div>
-            <p className="text-xs text-slate-300">Tanggal Dipilih</p>
-            <p className="mt-1 text-sm font-semibold">
-              {new Date(`${selectedDate}T00:00:00`).toLocaleDateString(
-                "id-ID",
-                {
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                },
-              )}
-            </p>
-          </div>
-        </div>
-      </section>
+      <MabaFlowCalendar />
 
       <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-medium text-slate-500">
-              Progress Hari Ini
+              {isToday ? "Progres Hari Ini" : "Progres Tanggal Dipilih"}
             </p>
+
+            <p className="mt-1 text-xs text-slate-400">
+              {formatDateLabel(selectedDate)}
+            </p>
+
             <p className="mt-1 text-2xl font-bold text-slate-900">
               {completedPlannerItems}/{displayedPlannerItems.length}
             </p>
           </div>
+
           <p className="text-sm font-semibold text-slate-700">
             {plannerProgress}%
           </p>
@@ -91,26 +107,32 @@ export default function PlannerPage() {
         </div>
 
         <p className="mt-2 text-xs text-slate-400">
-          {completedPlannerItems === displayedPlannerItems.length &&
-          displayedPlannerItems.length > 0
-            ? "Semua jadwal hari ini selesai."
-            : "Selesaikan jadwalmu satu per satu."}
+          {displayedPlannerItems.length === 0
+            ? "Belum ada jadwal untuk tanggal ini."
+            : completedPlannerItems === displayedPlannerItems.length
+              ? "Semua jadwal pada tanggal ini selesai."
+              : "Selesaikan jadwalmu satu per satu."}
         </p>
       </section>
 
       <section className="mt-8">
         <h2 className="text-lg font-semibold text-slate-900">
-          Jadwal Hari Ini
+          Jadwal {isToday ? "Hari Ini" : "Tanggal Dipilih"}
         </h2>
 
+        <p className="mt-1 text-sm text-slate-500">
+          {formatDateLabel(selectedDate)}
+        </p>
+
         <div className="mt-4 space-y-3">
-          {plannerItems.length === 0 ? (
+          {displayedPlannerItems.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 p-5 text-center">
               <p className="text-sm font-medium text-slate-600">
                 Belum ada jadwal
               </p>
+
               <p className="mt-1 text-xs text-slate-400">
-                Jadwal yang dibuat akan muncul di sini.
+                Jadwal untuk tanggal ini akan muncul di sini.
               </p>
             </div>
           ) : (
@@ -121,25 +143,31 @@ export default function PlannerPage() {
                 <article
                   key={item.id}
                   className={`flex gap-3 rounded-2xl transition ${
-                    isSelected ? "bg-slate-100 p-2 ring-2 ring-slate-900" : ""
+                    isSelected
+                      ? "bg-slate-100 p-2 ring-2 ring-slate-900"
+                      : "p-2"
                   }`}
                 >
-                  <div className="w-16 shrink-0 pt-3">
+                  <div className="w-16 shrink-0 pt-1">
                     <p className="text-xs font-semibold text-slate-700">
                       {item.startTime}
                     </p>
+
                     <p className="mt-1 text-[11px] text-slate-400">
                       {item.endTime}
                     </p>
                   </div>
 
-                  <div className="flex items-start gap-3">
+                  <div className="flex min-w-0 flex-1 items-start gap-3">
                     <button
                       type="button"
+                      aria-label={
+                        item.completed
+                          ? "Tandai jadwal belum selesai"
+                          : "Tandai jadwal selesai"
+                      }
                       onClick={() => {
                         const nextCompleted = !item.completed;
-
-                        togglePlannerItem(item.id);
 
                         if (item.subTaskId !== null) {
                           setSubTaskCompleted(
@@ -150,6 +178,8 @@ export default function PlannerPage() {
                         } else {
                           setTaskCompleted(item.taskId, nextCompleted);
                         }
+
+                        togglePlannerItem(item.id);
                       }}
                       className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
                         item.completed
@@ -190,5 +220,19 @@ export default function PlannerPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+export default function PlannerPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen p-6">
+          <p className="text-sm text-slate-500">Memuat planner...</p>
+        </main>
+      }
+    >
+      <PlannerContent />
+    </Suspense>
   );
 }

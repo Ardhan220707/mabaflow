@@ -23,9 +23,79 @@ export default function TugasPage() {
 
   const [priority, setPriority] = useState<Task["priority"]>("Sedang");
 
-  const toggleTask = useTaskStore((state) => state.toggleTask);
+  const toggleTaskInStore = useTaskStore((state) => state.toggleTask);
 
-  const toggleSubTask = useTaskStore((state) => state.toggleSubTask);
+  const toggleSubTaskInStore = useTaskStore((state) => state.toggleSubTask);
+
+  const setSubTaskCompleted = useTaskStore(
+    (state) => state.setSubTaskCompleted,
+  );
+
+  const setTaskCompleted = useTaskStore((state) => state.setTaskCompleted);
+
+  const plannerItems = usePlannerStore((state) => state.plannerItems);
+
+  const togglePlannerItem = usePlannerStore((state) => state.togglePlannerItem);
+
+  function toggleTask(taskId: number) {
+    const task = tasks.find((item) => item.id === taskId);
+
+    if (!task) return;
+
+    const nextCompleted = !task.completed;
+
+    toggleTaskInStore(taskId);
+
+    // Sinkronkan status semua jadwal yang terkait dengan tugas.
+    plannerItems
+      .filter((item) => item.taskId === taskId)
+      .forEach((item) => {
+        if (item.completed !== nextCompleted) {
+          togglePlannerItem(item.id);
+        }
+      });
+
+    // Sinkronkan status subtugas agar tetap konsisten.
+    task.subtasks.forEach((subtask) => {
+      setSubTaskCompleted(taskId, subtask.id, nextCompleted);
+    });
+  }
+
+  function toggleSubTask(taskId: number, subTaskId: number) {
+    const task = tasks.find((item) => item.id === taskId);
+    const subtask = task?.subtasks.find((item) => item.id === subTaskId);
+
+    if (!task || !subtask) return;
+
+    const nextCompleted = !subtask.completed;
+
+    toggleSubTaskInStore(taskId, subTaskId);
+
+    // Sinkronkan semua jadwal untuk subtugas ini.
+    plannerItems
+      .filter((item) => item.taskId === taskId && item.subTaskId === subTaskId)
+      .forEach((item) => {
+        if (item.completed !== nextCompleted) {
+          togglePlannerItem(item.id);
+        }
+      });
+
+    // Jika subtugas yang dibuka kembali sebelumnya membuat
+    // tugas induk selesai, tugas induk harus kembali belum selesai.
+    if (!nextCompleted && task.completed) {
+      setTaskCompleted(taskId, false);
+
+      // Jadwal lain milik tugas yang dibuka kembali ikut dibatalkan status selesainya.
+      plannerItems
+        .filter(
+          (item) =>
+            item.taskId === taskId &&
+            item.subTaskId !== subTaskId &&
+            item.completed,
+        )
+        .forEach((item) => togglePlannerItem(item.id));
+    }
+  }
 
   const addTaskToStore = useTaskStore((state) => state.addTask);
 

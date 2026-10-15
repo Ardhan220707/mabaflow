@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type { Task } from "@/components/tasks/tasks-card";
 
 type TaskStore = {
@@ -120,95 +121,84 @@ const initialTasks: Task[] = [
   },
 ];
 
-export const useTaskStore = create<TaskStore>((set) => ({
-  tasks: initialTasks,
+export const useTaskStore = create<TaskStore>()(
+  persist(
+    (set) => ({
+      tasks: initialTasks,
 
-  setTasks: (tasks) => set({ tasks }),
+      setTasks: (tasks) => set({ tasks }),
 
-  toggleTask: (id) =>
-    set((state) => ({
-      tasks: state.tasks.map((task) =>
-        task.id === id
-          ? {
+      toggleTask: (id) =>
+        set((state) => ({
+          tasks: state.tasks.map((task) =>
+            task.id === id ? { ...task, completed: !task.completed } : task,
+          ),
+        })),
+
+      toggleSubTask: (taskId, subTaskId) =>
+        set((state) => ({
+          tasks: state.tasks.map((task) => {
+            if (task.id !== taskId) return task;
+
+            const updatedSubtasks = task.subtasks.map((subTask) =>
+              subTask.id === subTaskId
+                ? { ...subTask, completed: !subTask.completed }
+                : subTask,
+            );
+
+            return {
               ...task,
-              completed: !task.completed,
-            }
-          : task,
-      ),
-    })),
+              subtasks: updatedSubtasks,
+              completed:
+                updatedSubtasks.length > 0 &&
+                updatedSubtasks.every((subTask) => subTask.completed),
+            };
+          }),
+        })),
 
-  toggleSubTask: (taskId, subTaskId) =>
-    set((state) => ({
-      tasks: state.tasks.map((task) => {
-        if (task.id !== taskId) {
-          return task;
-        }
+      setSubTaskCompleted: (taskId, subTaskId, completed) =>
+        set((state) => ({
+          tasks: state.tasks.map((task) => {
+            if (task.id !== taskId) return task;
 
-        const updatedSubtasks = task.subtasks.map((subTask) =>
-          subTask.id === subTaskId
-            ? {
-                ...subTask,
-                completed: !subTask.completed,
-              }
-            : subTask,
-        );
+            const updatedSubtasks = task.subtasks.map((subTask) =>
+              subTask.id === subTaskId ? { ...subTask, completed } : subTask,
+            );
 
-        const hasSubtasks = updatedSubtasks.length > 0;
+            return {
+              ...task,
+              subtasks: updatedSubtasks,
+              completed:
+                updatedSubtasks.length > 0 &&
+                updatedSubtasks.every((subTask) => subTask.completed),
+            };
+          }),
+        })),
 
-        const allSubtasksCompleted =
-          hasSubtasks && updatedSubtasks.every((subTask) => subTask.completed);
+      setTaskCompleted: (taskId, completed) =>
+        set((state) => ({
+          tasks: state.tasks.map((task) => {
+            if (task.id !== taskId) return task;
 
-        return {
-          ...task,
-          subtasks: updatedSubtasks,
-          completed: allSubtasksCompleted,
-        };
-      }),
-    })),
-
-  setSubTaskCompleted: (taskId, subTaskId, completed) =>
-    set((state) => ({
-      tasks: state.tasks.map((task) => {
-        if (task.id !== taskId) {
-          return task;
-        }
-
-        const updatedSubtasks = task.subtasks.map((subTask) =>
-          subTask.id === subTaskId
-            ? {
-                ...subTask,
-                completed,
-              }
-            : subTask,
-        );
-
-        const hasSubtasks = updatedSubtasks.length > 0;
-
-        const allSubtasksCompleted =
-          hasSubtasks && updatedSubtasks.every((subTask) => subTask.completed);
-
-        return {
-          ...task,
-          subtasks: updatedSubtasks,
-          completed: allSubtasksCompleted,
-        };
-      }),
-    })),
-
-  setTaskCompleted: (taskId, completed) =>
-    set((state) => ({
-      tasks: state.tasks.map((task) =>
-        task.id === taskId
-          ? {
+            return {
               ...task,
               completed,
-            }
-          : task,
-      ),
-    })),
+              subtasks: task.subtasks.map((subtask) => ({
+                ...subtask,
+                completed,
+              })),
+            };
+          }),
+        })),
 
-  addTask: (task) =>
-    set((state) => ({
-      tasks: [...state.tasks, task],
-    })),
-}));
+      addTask: (task) =>
+        set((state) => ({
+          tasks: [...state.tasks, task],
+        })),
+    }),
+    {
+      name: "mabaflow-tasks",
+      storage: createJSONStorage(() => localStorage),
+    },
+  ),
+);
