@@ -129,15 +129,8 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const message = body.message;
 
-    if (!message || typeof message !== "string") {
-      return NextResponse.json(
-        { error: "Message tidak boleh kosong." },
-        { status: 400 },
-      );
-    }
-
+    // AI PLANNER
     if (body.action === "schedule") {
       if (!Array.isArray(body.tasks) || body.tasks.length === 0) {
         return NextResponse.json(
@@ -156,7 +149,10 @@ export async function POST(request: Request) {
       const scheduleResponse = await ai.models.generateContent({
         model: "gemini-3.5-flash-lite",
         contents: JSON.stringify({
-          request: message,
+          request:
+            typeof body.message === "string"
+              ? body.message
+              : "Buat jadwal belajar yang realistis berdasarkan data tugas dan waktu luang yang tersedia.",
           tasks: body.tasks,
           preferences: body.preferences ?? {},
           availability: body.availability,
@@ -179,6 +175,16 @@ export async function POST(request: Request) {
       return NextResponse.json({
         result: scheduleResponse.text,
       });
+    }
+
+    // CHAT AI / PEMBUATAN TUGAS
+    const message = body.message;
+
+    if (typeof message !== "string" || !message.trim()) {
+      return NextResponse.json(
+        { error: "Message tidak boleh kosong." },
+        { status: 400 },
+      );
     }
 
     const taskResponse = await ai.models.generateContent({

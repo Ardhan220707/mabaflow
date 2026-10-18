@@ -1,10 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Plus, Send, CalendarClock, Trash2 } from "lucide-react";
+import {
+  Bot,
+  Send,
+  Sparkles,
+  MessageCircle,
+  ClipboardList,
+  CalendarClock,
+  Clock3,
+  Plus,
+  LoaderCircle,
+  AlertCircle,
+  Check,
+  Trash2,
+} from "lucide-react";
 import { useTaskStore } from "@/stores/task-store";
 import { usePlannerStore } from "@/stores/planner-store";
-import type { PlannerItem } from "@/stores/planner-store";
 
 type Message = {
   id: number;
@@ -38,52 +50,53 @@ type ScheduleDraft = {
   rationale: string;
 };
 
-type ScheduleResponse = {
-  type: "schedule";
-  schedules: ScheduleDraft[];
-  conflicts: string[];
-  notes: string[];
-};
-
-function getLocalDate() {
+const today = () => {
   const date = new Date();
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
-
   return `${year}-${month}-${day}`;
-}
+};
 
-function timeToMinutes(time: string) {
-  const [hours, minutes] = time.split(":").map(Number);
-  return hours * 60 + minutes;
-}
+const cardStyle = "rounded-2xl border border-[#E2EAE0] bg-white p-4 shadow-sm";
 
-function isValidDateString(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+const primaryButton =
+  "inline-flex items-center justify-center gap-2 rounded-xl bg-[#17664E] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#12513E] disabled:cursor-not-allowed disabled:opacity-50";
 
-  const date = new Date(`${value}T00:00:00`);
-
-  return (
-    !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
-  );
-}
-
-export default function AiPage() {
-  const [message, setMessage] = useState("");
+export default function AIPage() {
+  const [activeTab, setActiveTab] = useState<"chat" | "planner">("chat");
 
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
       role: "assistant",
       content:
-        "Halo, aku siap bantu. Ceritakan tugas, deadline, atau aktivitas yang sedang kamu hadapi.",
+        "Halo! Aku siap bantu kamu mengatur tugas, menentukan prioritas, dan menyusun rencana belajar yang lebih realistis. Mau mulai dari mana?",
     },
   ]);
 
-  const [generatedTask, setGeneratedTask] = useState<AiTask | null>(null);
-  const [taskAdded, setTaskAdded] = useState(false);
+  const [message, setMessage] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState("");
+
+  const [generatedTask, setGeneratedTask] = useState<AiTask | null>(null);
+  const [taskLoading, setTaskLoading] = useState(false);
+  const [taskError, setTaskError] = useState("");
+  const [taskSaved, setTaskSaved] = useState(false);
+
+  const [plannerDate, setPlannerDate] = useState(today());
+  const [freeStart, setFreeStart] = useState("08:00");
+  const [freeEnd, setFreeEnd] = useState("21:00");
+  const [preferredStart, setPreferredStart] = useState("09:00");
+  const [preferredEnd, setPreferredEnd] = useState("17:00");
+  const [sessionMinutes, setSessionMinutes] = useState(50);
+  const [breakMinutes, setBreakMinutes] = useState(10);
+
+  const [scheduleDraft, setScheduleDraft] = useState<ScheduleDraft[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleError, setScheduleError] = useState("");
+  const [scheduleNotes, setScheduleNotes] = useState<string[]>([]);
+  const [scheduleSaved, setScheduleSaved] = useState(false);
 
   const tasks = useTaskStore((state) => state.tasks);
   const addTask = useTaskStore((state) => state.addTask);
@@ -91,136 +104,153 @@ export default function AiPage() {
   const plannerItems = usePlannerStore((state) => state.plannerItems);
   const addPlannerItem = usePlannerStore((state) => state.addPlannerItem);
 
-  const [plannerDate, setPlannerDate] = useState(getLocalDate());
-  const [freeStart, setFreeStart] = useState("08:00");
-  const [freeEnd, setFreeEnd] = useState("10:00");
+  const unfinishedTasks = tasks.filter((task) => !task.completed);
 
-  const [preferredStart, setPreferredStart] = useState("08:00");
-  const [preferredEnd, setPreferredEnd] = useState("17:00");
+  async function callAI(payload: Record<string, unknown>) {
+    const response = await fetch("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-  const [sessionMinutes, setSessionMinutes] = useState(25);
-  const [breakMinutes, setBreakMinutes] = useState(5);
+    const data = await response.json();
 
-  const [scheduleDraft, setScheduleDraft] = useState<ScheduleResponse | null>(
-    null,
-  );
+    if (!response.ok) {
+      throw new Error(
+        typeof data.error === "string"
+          ? data.error
+          : "AI belum bisa memproses permintaan. Coba lagi.",
+      );
+    }
 
-  const [scheduleLoading, setScheduleLoading] = useState(false);
-  const [scheduleError, setScheduleError] = useState("");
-  const [scheduleSaved, setScheduleSaved] = useState(false);
+    return data;
+  }
 
-  const handleSend = async () => {
-    const trimmedMessage = message.trim();
+  async function handleSend() {
+    const text = message.trim();
 
-    if (!trimmedMessage || chatLoading) return;
+    if (!text || chatLoading) return;
 
-    setMessages((current) => [
-      ...current,
-      {
-        id: Date.now(),
-        role: "user",
-        content: trimmedMessage,
-      },
-    ]);
-
+    setChatError("");
     setMessage("");
-    setTaskAdded(false);
-    setGeneratedTask(null);
+
+    const userMessage: Message = {
+      id: Date.now(),
+      role: "user",
+      content: text,
+    };
+
+    setMessages((previous) => [...previous, userMessage]);
     setChatLoading(true);
 
     try {
-      const response = await fetch("/api/ai", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: trimmedMessage,
-        }),
+      const data = await callAI({
+        type: "chat",
+        message: text,
       });
 
-      const data = await response.json();
+      const reply =
+        data.reply ??
+        data.message ??
+        data.response ??
+        data.expectedOutput ??
+        data.title;
 
-      if (!response.ok) {
-        throw new Error(data.error || "Terjadi kesalahan.");
-      }
-
-      const parsed = (
-        typeof data.result === "string" ? JSON.parse(data.result) : data.result
-      ) as {
-        type?: string;
-        title?: string;
-        course?: string;
-        dueDate?: string;
-        estimatedMinutes?: number;
-        expectedOutput?: string;
-        priority?: "Rendah" | "Sedang" | "Tinggi";
-        subtasks?: {
-          title: string;
-          estimatedMinutes: number;
-        }[];
-      };
-
-      if (parsed.type === "task" && parsed.title) {
-        setGeneratedTask({
-          title: parsed.title,
-          course: parsed.course || "",
-          dueDate: parsed.dueDate || "",
-          estimatedMinutes: parsed.estimatedMinutes || 0,
-          expectedOutput: parsed.expectedOutput || parsed.title,
-          priority: parsed.priority || "Sedang",
-
-          subtasks: (parsed.subtasks || []).map((subtask, index) => ({
-            id: index + 1,
-            title: subtask.title,
-            estimatedMinutes: subtask.estimatedMinutes,
-            completed: false,
-          })),
-        });
-
-        setMessages((current) => [
-          ...current,
-          {
-            id: Date.now() + 1,
-            role: "assistant",
-            content:
-              "Aku sudah menyusun tugasmu. Periksa kartu tugas di bawah sebelum menambahkannya.",
-          },
-        ]);
-      } else {
-        setMessages((current) => [
-          ...current,
-          {
-            id: Date.now() + 1,
-            role: "assistant",
-            content:
-              parsed.expectedOutput ||
-              parsed.title ||
-              "Aku siap membantu mengatur tugas dan jadwalmu.",
-          },
-        ]);
-      }
-    } catch (error) {
-      console.error("AI request error:", error);
-
-      setMessages((current) => [
-        ...current,
+      setMessages((previous) => [
+        ...previous,
         {
           id: Date.now() + 1,
           role: "assistant",
           content:
-            error instanceof Error
-              ? error.message
-              : "Maaf, aku belum bisa memproses pesanmu.",
+            typeof reply === "string"
+              ? reply
+              : "Permintaan selesai diproses. Coba jelaskan lagi jika kamu membutuhkan hasil yang lebih spesifik.",
         },
       ]);
+    } catch (error) {
+      setChatError(
+        error instanceof Error
+          ? error.message
+          : "Terjadi kesalahan saat menghubungi AI.",
+      );
     } finally {
       setChatLoading(false);
     }
-  };
+  }
 
-  const handleAddTask = () => {
-    if (!generatedTask || taskAdded) return;
+  async function handleGenerateTask() {
+    const prompt = message.trim();
+
+    if (!prompt || taskLoading) return;
+
+    setTaskError("");
+    setTaskSaved(false);
+    setTaskLoading(true);
+
+    try {
+      const data = await callAI({
+        type: "task",
+        prompt,
+        message: prompt,
+      });
+
+      const rawTask = data.task ?? data;
+
+      if (!rawTask.title || !Array.isArray(rawTask.subtasks)) {
+        throw new Error(
+          "AI belum menghasilkan format tugas yang lengkap. Coba jelaskan tugas dan deadline dengan lebih spesifik.",
+        );
+      }
+
+      const subtasks = rawTask.subtasks.map(
+        (
+          subtask: {
+            id?: number;
+            title: string;
+            estimatedMinutes?: number;
+            completed?: boolean;
+          },
+          index: number,
+        ) => ({
+          id: subtask.id ?? Date.now() + index,
+          title: subtask.title,
+          estimatedMinutes: Math.max(5, Number(subtask.estimatedMinutes) || 30),
+          completed: Boolean(subtask.completed),
+        }),
+      );
+
+      setGeneratedTask({
+        title: rawTask.title,
+        course: rawTask.course || "",
+        dueDate: rawTask.dueDate || today(),
+        estimatedMinutes: Math.max(
+          5,
+          Number(rawTask.estimatedMinutes) ||
+            subtasks.reduce(
+              (total: number, item: { estimatedMinutes: number }) =>
+                total + item.estimatedMinutes,
+              0,
+            ),
+        ),
+        expectedOutput: rawTask.expectedOutput || "",
+        priority: ["Rendah", "Sedang", "Tinggi"].includes(rawTask.priority)
+          ? rawTask.priority
+          : "Sedang",
+        subtasks,
+      });
+
+      setMessage("");
+    } catch (error) {
+      setTaskError(
+        error instanceof Error ? error.message : "Gagal membuat tugas.",
+      );
+    } finally {
+      setTaskLoading(false);
+    }
+  }
+
+  function handleAddTask() {
+    if (!generatedTask || taskSaved) return;
 
     addTask({
       id: Date.now(),
@@ -230,73 +260,60 @@ export default function AiPage() {
       estimatedMinutes: generatedTask.estimatedMinutes,
       expectedOutput: generatedTask.expectedOutput,
       priority: generatedTask.priority,
-      completed: false,
       subtasks: generatedTask.subtasks,
+      completed: false,
     });
 
-    setTaskAdded(true);
-  };
+    setTaskSaved(true);
+    setGeneratedTask(null);
+    setMessage("");
+  }
 
-  const handleGenerateSchedule = async () => {
-    setScheduleError("");
-    setScheduleSaved(false);
-    setScheduleDraft(null);
-
-    if (!isValidDateString(plannerDate) || freeStart >= freeEnd) {
-      setScheduleError("Periksa tanggal dan rentang waktu luangmu.");
-      return;
-    }
-
-    if (
-      preferredStart >= preferredEnd ||
-      sessionMinutes < 5 ||
-      sessionMinutes > 180 ||
-      breakMinutes < 0 ||
-      breakMinutes > 60
-    ) {
-      setScheduleError("Periksa kembali preferensi belajar.");
-      return;
-    }
-
-    if (freeStart < preferredStart || freeEnd > preferredEnd) {
-      setScheduleError(
-        "Waktu luang harus berada di dalam rentang preferensi belajar.",
-      );
-      return;
-    }
-
-    const availableTasks = tasks
-      .filter((task) => !task.completed)
-      .map((task) => ({
-        ...task,
-        subtasks: task.subtasks.filter(
-          (subtask) =>
-            !subtask.completed &&
-            !plannerItems.some(
-              (item) =>
-                item.taskId === task.id && item.subTaskId === subtask.id,
-            ),
-        ),
-      }))
-      .filter((task) => task.subtasks.length > 0);
-
-    if (availableTasks.length === 0) {
-      setScheduleError(
-        "Tidak ada subtugas belum selesai yang belum memiliki jadwal.",
-      );
-      return;
-    }
-
-    const overlappingExisting = plannerItems.filter(
-      (item) =>
-        item.date === plannerDate &&
-        item.startTime < freeEnd &&
-        freeStart < item.endTime,
+  function updateSchedule(
+    index: number,
+    field: keyof ScheduleDraft,
+    value: string | number,
+  ) {
+    setScheduleDraft((previous) =>
+      previous.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item,
+      ),
     );
+    setScheduleSaved(false);
+    setScheduleError("");
+  }
 
-    if (overlappingExisting.length > 0) {
+  function removeSchedule(index: number) {
+    setScheduleDraft((previous) =>
+      previous.filter((_, itemIndex) => itemIndex !== index),
+    );
+    setScheduleSaved(false);
+  }
+
+  async function handleGenerateSchedule() {
+    setScheduleError("");
+    setScheduleNotes([]);
+    setScheduleDraft([]);
+    setScheduleSaved(false);
+
+    if (!plannerDate) {
+      setScheduleError("Pilih tanggal terlebih dahulu.");
+      return;
+    }
+
+    if (freeStart >= freeEnd) {
+      setScheduleError("Jam selesai harus setelah jam mulai.");
+      return;
+    }
+
+    if (preferredStart >= preferredEnd) {
+      setScheduleError("Jam belajar selesai harus setelah jam mulai.");
+      return;
+    }
+
+    if (unfinishedTasks.length === 0) {
       setScheduleError(
-        "Rentang waktu yang dipilih bertabrakan dengan jadwal yang sudah ada. Pilih waktu luang lain.",
+        "Belum ada tugas yang belum selesai. Tambahkan tugas terlebih dahulu.",
       );
       return;
     }
@@ -304,673 +321,758 @@ export default function AiPage() {
     setScheduleLoading(true);
 
     try {
-      const response = await fetch("/api/ai", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "schedule",
-
-          message:
-            "Buat draft jadwal untuk subtugas yang belum selesai dan belum memiliki jadwal. Jangan mengubah jadwal lama atau menjadwalkan subtugas yang sudah memiliki jadwal.",
-
-          tasks: availableTasks,
-
-          preferences: {
-            preferredStartTime: preferredStart,
-            preferredEndTime: preferredEnd,
-            sessionMinutes,
-            breakMinutes,
+      const data = await callAI({
+        action: "schedule",
+        message: "Susun jadwal belajar yang realistis untuk tugas-tugas ini.",
+        tasks: unfinishedTasks,
+        availability: [
+          {
+            date: plannerDate,
+            startTime: freeStart,
+            endTime: freeEnd,
           },
-
-          availability: [
-            {
-              date: plannerDate,
-              startTime: freeStart,
-              endTime: freeEnd,
-            },
-          ],
-
-          existingSchedules: plannerItems,
-        }),
+        ],
+        preferences: {
+          preferredStart,
+          preferredEnd,
+          sessionMinutes,
+          breakMinutes,
+        },
+        existingSchedules: plannerItems,
       });
 
-      const data = await response.json();
+      const result =
+        typeof data.result === "string" ? JSON.parse(data.result) : data.result;
 
-      if (!response.ok) {
-        throw new Error(data.error || "Gagal membuat draft jadwal.");
+      const schedules = result?.schedules;
+
+      if (!Array.isArray(schedules) || schedules.length === 0) {
+        setScheduleNotes([
+          ...(Array.isArray(result?.notes) ? result.notes : []),
+          ...(Array.isArray(result?.conflicts) ? result.conflicts : []),
+        ]);
+
+        throw new Error(
+          "AI belum menghasilkan jadwal. Coba periksa waktu luang dan tugasmu.",
+        );
       }
 
-      const parsed = (
-        typeof data.result === "string" ? JSON.parse(data.result) : data.result
-      ) as ScheduleResponse;
+      setScheduleDraft(
+        schedules.map((item: ScheduleDraft, index: number) => ({
+          ...item,
+          taskId: Number(item.taskId),
+          subTaskId: Number(item.subTaskId),
+          date: item.date || plannerDate,
+          estimatedMinutes: Math.max(5, Number(item.estimatedMinutes) || 30),
+          startTime: item.startTime || "09:00",
+          endTime: item.endTime || "09:30",
+          rationale: item.rationale || "",
+          title: item.title || `Sesi belajar ${index + 1}`,
+        })),
+      );
 
-      if (
-        parsed.type !== "schedule" ||
-        !Array.isArray(parsed.schedules) ||
-        !Array.isArray(parsed.conflicts) ||
-        !Array.isArray(parsed.notes)
-      ) {
-        throw new Error("Format respons jadwal dari AI tidak valid.");
-      }
-
-      setScheduleDraft(parsed);
+      setScheduleNotes([
+        ...(Array.isArray(result.notes) ? result.notes : []),
+        ...(Array.isArray(result.conflicts) ? result.conflicts : []),
+      ]);
     } catch (error) {
       setScheduleError(
-        error instanceof Error
-          ? error.message
-          : "Terjadi kesalahan saat membuat jadwal.",
+        error instanceof Error ? error.message : "Gagal membuat jadwal.",
       );
     } finally {
       setScheduleLoading(false);
     }
-  };
+  }
 
-  const updateDraftItem = (
-    index: number,
-    field: "date" | "startTime" | "endTime",
-    value: string,
-  ) => {
-    setScheduleDraft((current) => {
-      if (!current) return current;
+  function handleApproveSchedule() {
+    if (scheduleSaved || scheduleDraft.length === 0) return;
 
-      return {
-        ...current,
-        schedules: current.schedules.map((item, itemIndex) =>
-          itemIndex === index ? { ...item, [field]: value } : item,
-        ),
-      };
-    });
-
-    setScheduleSaved(false);
     setScheduleError("");
-  };
 
-  const removeDraftItem = (index: number) => {
-    setScheduleDraft((current) => {
-      if (!current) return current;
+    const sorted = [...scheduleDraft].sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime),
+    );
 
-      return {
-        ...current,
-        schedules: current.schedules.filter(
-          (_, itemIndex) => itemIndex !== index,
-        ),
-      };
-    });
+    for (const item of sorted) {
+      if (
+        !item.title.trim() ||
+        !item.date ||
+        !item.startTime ||
+        !item.endTime ||
+        item.startTime >= item.endTime
+      ) {
+        setScheduleError(
+          "Periksa kembali judul, tanggal, dan jam setiap sesi. Jam selesai harus setelah jam mulai.",
+        );
+        return;
+      }
 
-    setScheduleSaved(false);
-    setScheduleError("");
-  };
-
-  const handleApproveSchedule = () => {
-    if (!scheduleDraft || scheduleDraft.schedules.length === 0) {
-      setScheduleError("Tidak ada jadwal untuk disimpan.");
-      return;
+      if (
+        item.date === plannerDate &&
+        (item.startTime < freeStart || item.endTime > freeEnd)
+      ) {
+        setScheduleError(
+          "Ada sesi yang berada di luar waktu luang yang kamu pilih.",
+        );
+        return;
+      }
     }
 
-    setScheduleError("");
-
-    const taskMap = new Map(tasks.map((task) => [task.id, task]));
-    const newItems: PlannerItem[] = [];
-    const usedSubtasks = new Set<string>();
-
-    for (const [index, draft] of scheduleDraft.schedules.entries()) {
-      const task = taskMap.get(draft.taskId);
-
-      const subtask = task?.subtasks.find(
-        (item) => item.id === draft.subTaskId,
-      );
-
-      if (!task || task.completed || !subtask || subtask.completed) {
-        setScheduleError(
-          `Subtugas "${draft.title}" tidak tersedia atau sudah selesai.`,
-        );
-        return;
-      }
+    for (let index = 1; index < sorted.length; index++) {
+      const previous = sorted[index - 1];
+      const current = sorted[index];
 
       if (
-        !isValidDateString(draft.date) ||
-        !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.startTime) ||
-        !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.endTime)
-      ) {
-        setScheduleError("Tanggal atau format waktu tidak valid.");
-        return;
-      }
-
-      const start = timeToMinutes(draft.startTime);
-      const end = timeToMinutes(draft.endTime);
-
-      if (
-        end <= start ||
-        end - start !== draft.estimatedMinutes ||
-        draft.estimatedMinutes !== subtask.estimatedMinutes
+        previous.date === current.date &&
+        current.startTime < previous.endTime
       ) {
         setScheduleError(
-          `Periksa durasi jadwal "${draft.title}". Durasi harus sesuai dengan estimasi subtugas.`,
+          "Ada sesi yang waktunya bertabrakan. Edit jamnya sebelum menyimpan.",
         );
         return;
       }
+    }
 
-      if (
-        draft.date !== plannerDate ||
-        draft.startTime < freeStart ||
-        draft.endTime > freeEnd ||
-        draft.startTime < preferredStart ||
-        draft.endTime > preferredEnd
-      ) {
-        setScheduleError(
-          `Jadwal "${draft.title}" berada di luar waktu yang dipilih.`,
+    const existing = plannerItems as unknown as {
+      date?: string;
+      startTime?: string;
+      endTime?: string;
+      start?: string;
+      end?: string;
+    }[];
+
+    for (const item of sorted) {
+      const conflict = existing.some((existingItem) => {
+        const existingStart = existingItem.startTime ?? existingItem.start;
+        const existingEnd = existingItem.endTime ?? existingItem.end;
+
+        return (
+          existingItem.date === item.date &&
+          typeof existingStart === "string" &&
+          typeof existingEnd === "string" &&
+          item.startTime < existingEnd &&
+          item.endTime > existingStart
         );
-        return;
-      }
-
-      // Periksa deadline hanya jika format tanggalnya valid.
-      const hasValidDueDate = isValidDateString(task.dueDate);
-
-      if (hasValidDueDate && draft.date > task.dueDate) {
-        setScheduleError(`Jadwal "${draft.title}" melewati deadline tugasnya.`);
-        return;
-      }
-
-      // Cegah subtugas yang sama muncul dua kali dalam draft.
-      const subtaskKey = `${draft.taskId}-${draft.subTaskId}`;
-
-      if (usedSubtasks.has(subtaskKey)) {
-        setScheduleError(
-          `Subtugas "${draft.title}" muncul lebih dari sekali dalam draft.`,
-        );
-        return;
-      }
-
-      // Cegah subtugas yang sudah memiliki jadwal disimpan ulang.
-      const alreadyScheduled = plannerItems.some(
-        (item) =>
-          item.taskId === draft.taskId && item.subTaskId === draft.subTaskId,
-      );
-
-      if (alreadyScheduled) {
-        setScheduleError(
-          `Subtugas "${draft.title}" sudah memiliki jadwal di Planner.`,
-        );
-        return;
-      }
-
-      usedSubtasks.add(subtaskKey);
-
-      newItems.push({
-        id: Date.now() + index,
-        taskId: draft.taskId,
-        subTaskId: draft.subTaskId,
-        title: subtask.title,
-        date: draft.date,
-        startTime: draft.startTime,
-        endTime: draft.endTime,
-        completed: false,
       });
-    }
 
-    // Pastikan jadwal baru tidak bertabrakan dengan jadwal lama
-    // maupun dengan jadwal lain dalam draft.
-    const allItems = [...plannerItems, ...newItems];
-
-    for (let i = 0; i < allItems.length; i++) {
-      for (let j = i + 1; j < allItems.length; j++) {
-        const first = allItems[i];
-        const second = allItems[j];
-
-        if (
-          first.date === second.date &&
-          first.startTime < second.endTime &&
-          second.startTime < first.endTime
-        ) {
-          setScheduleError(
-            `Jadwal "${first.title}" dan "${second.title}" bertabrakan.`,
-          );
-          return;
-        }
+      if (conflict) {
+        setScheduleError(
+          "Jadwal bertabrakan dengan agenda yang sudah ada di Planner. Ubah waktunya sebelum menyimpan.",
+        );
+        return;
       }
     }
 
-    for (const item of newItems) {
-      addPlannerItem(item);
-    }
+    try {
+      sorted.forEach((item) => {
+        addPlannerItem({
+          id: Date.now() + Math.floor(Math.random() * 100000),
+          title: item.title,
+          date: item.date,
+          startTime: item.startTime,
+          endTime: item.endTime,
+          completed: false,
+        } as Parameters<typeof addPlannerItem>[0]);
+      });
 
-    setScheduleSaved(true);
-  };
+      setScheduleSaved(true);
+    } catch {
+      setScheduleError(
+        "Jadwal belum berhasil disimpan. Periksa format data Planner.",
+      );
+    }
+  }
 
   return (
-    <main className="min-h-screen p-6 pb-28">
-      <section>
-        <p className="text-sm text-slate-500">MabaFlow Assistant</p>
-        <h1 className="mt-1 text-2xl font-bold text-slate-900">AI Assistant</h1>
-        <p className="mt-2 text-sm text-slate-500">
-          Ceritakan tugas atau masalahmu. Aku bantu mengaturnya.
-        </p>
-      </section>
-
-      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="flex items-center gap-2">
-          <CalendarClock size={20} className="text-slate-700" />
-          <h2 className="text-lg font-semibold text-slate-900">AI Planner</h2>
-        </div>
-
-        <p className="mt-2 text-sm text-slate-500">
-          Tentukan waktu luang dan preferensi belajar untuk membuat draft jadwal
-          yang bisa kamu periksa sebelum disimpan.
-        </p>
-
-        <div className="mt-4 space-y-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Tanggal belajar
-            </label>
-            <input
-              type="date"
-              value={plannerDate}
-              onChange={(event) => setPlannerDate(event.target.value)}
-              className="w-full rounded-xl border border-slate-200 p-3 text-sm"
-            />
+    <main className="min-h-screen bg-[#F3F7F0] px-4 pb-28 pt-6 text-[#183D32]">
+      <div className="mx-auto max-w-md space-y-5">
+        <header className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#DCEBDD] text-[#17664E]">
+            <Bot size={27} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Waktu luang mulai
-              </label>
-              <input
-                type="time"
-                value={freeStart}
-                onChange={(event) => setFreeStart(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 p-3 text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Waktu luang selesai
-              </label>
-              <input
-                type="time"
-                value={freeEnd}
-                onChange={(event) => setFreeEnd(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 p-3 text-sm"
-              />
-            </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-[#82978A]">
+              Asisten produktivitasmu
+            </p>
+            <h1 className="text-2xl font-bold tracking-tight">AI Assistant</h1>
           </div>
 
-          <div className="border-t border-slate-100 pt-4">
-            <h3 className="text-sm font-semibold text-slate-800">
-              Preferensi belajar
-            </h3>
+          <span className="rounded-full bg-[#DCEBDD] px-3 py-1 text-xs font-semibold text-[#17664E]">
+            <Sparkles size={12} className="mr-1 inline" />
+            AI
+          </span>
+        </header>
 
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-sm text-slate-700">
-                  Mulai belajar
-                </label>
-                <input
-                  type="time"
-                  value={preferredStart}
-                  onChange={(event) => setPreferredStart(event.target.value)}
-                  className="w-full rounded-xl border border-slate-200 p-3 text-sm"
-                />
+        <section className="rounded-2xl border border-[#E2EAE0] bg-white p-1.5 shadow-sm">
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => setActiveTab("chat")}
+              className={`flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold transition ${
+                activeTab === "chat"
+                  ? "bg-[#17664E] text-white"
+                  : "text-[#82978A] hover:bg-[#F3F7F0]"
+              }`}
+            >
+              <MessageCircle size={17} />
+              Chat AI
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("planner")}
+              className={`flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold transition ${
+                activeTab === "planner"
+                  ? "bg-[#17664E] text-white"
+                  : "text-[#82978A] hover:bg-[#F3F7F0]"
+              }`}
+            >
+              <CalendarClock size={17} />
+              AI Planner
+            </button>
+          </div>
+        </section>
+
+        {activeTab === "chat" ? (
+          <>
+            <section className="rounded-2xl bg-[#DCEBDD] p-4">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl bg-white p-2 text-[#17664E]">
+                  <Sparkles size={20} />
+                </div>
+                <div>
+                  <h2 className="font-bold">Teman belajar kamu</h2>
+                  <p className="mt-1 text-sm leading-6 text-[#466B59]">
+                    Ceritakan tugasmu, minta saran prioritas, atau ubah tugas
+                    besar menjadi langkah kecil.
+                  </p>
+                </div>
               </div>
+            </section>
 
-              <div>
-                <label className="mb-1 block text-sm text-slate-700">
-                  Selesai belajar
-                </label>
-                <input
-                  type="time"
-                  value={preferredEnd}
-                  onChange={(event) => setPreferredEnd(event.target.value)}
-                  className="w-full rounded-xl border border-slate-200 p-3 text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm text-slate-700">
-                  Durasi sesi (menit)
-                </label>
-                <input
-                  type="number"
-                  min={5}
-                  max={180}
-                  value={sessionMinutes}
-                  onChange={(event) =>
-                    setSessionMinutes(Number(event.target.value))
+            <section className={`${cardStyle} space-y-4`}>
+              <div className="flex items-center justify-between">
+                <h2 className="font-bold">Percakapan</h2>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setMessages([
+                      {
+                        id: Date.now(),
+                        role: "assistant",
+                        content:
+                          "Halo! Ada yang bisa aku bantu rencanakan hari ini?",
+                      },
+                    ])
                   }
-                  className="w-full rounded-xl border border-slate-200 p-3 text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm text-slate-700">
-                  Istirahat (menit)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={60}
-                  value={breakMinutes}
-                  onChange={(event) =>
-                    setBreakMinutes(Number(event.target.value))
-                  }
-                  className="w-full rounded-xl border border-slate-200 p-3 text-sm"
-                />
-              </div>
-            </div>
-          </div>
-
-          <p className="text-xs text-slate-500">
-            {tasks.filter((task) => !task.completed).length} tugas belum
-            selesai. AI akan mempertimbangkan subtugas yang belum dijadwalkan
-            dan belum dikerjakan.
-          </p>
-
-          <button
-            type="button"
-            onClick={handleGenerateSchedule}
-            disabled={scheduleLoading}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
-          >
-            <CalendarClock size={17} />
-            {scheduleLoading ? "Menyusun jadwal..." : "Buat Draft Jadwal"}
-          </button>
-
-          {scheduleError && (
-            <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
-              {scheduleError}
-            </p>
-          )}
-
-          {scheduleSaved && (
-            <p className="rounded-xl bg-green-50 p-3 text-sm text-green-700">
-              Jadwal berhasil disimpan ke Planner.
-            </p>
-          )}
-        </div>
-
-        {scheduleDraft && (
-          <div className="mt-6 border-t border-slate-200 pt-5">
-            <h3 className="font-semibold text-slate-900">Preview Jadwal</h3>
-
-            <p className="mt-1 text-xs text-slate-500">
-              Periksa dan edit setiap jadwal sebelum menyetujuinya.
-            </p>
-
-            {scheduleDraft.conflicts.map((conflict, index) => (
-              <p
-                key={`conflict-${index}`}
-                className="mt-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-800"
-              >
-                {conflict}
-              </p>
-            ))}
-
-            {scheduleDraft.notes.map((note, index) => (
-              <p key={`note-${index}`} className="mt-2 text-xs text-slate-500">
-                {note}
-              </p>
-            ))}
-
-            {scheduleDraft.schedules.length === 0 && (
-              <p className="mt-4 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
-                AI belum menemukan jadwal yang sesuai. Periksa waktu luang atau
-                deadline tugasmu.
-              </p>
-            )}
-
-            <div className="mt-4 space-y-4">
-              {scheduleDraft.schedules.map((item, index) => (
-                <div
-                  key={`${item.taskId}-${item.subTaskId}-${index}`}
-                  className="rounded-xl border border-slate-200 p-3"
+                  className="text-xs font-semibold text-[#17664E] hover:underline"
                 >
-                  <p className="font-medium text-slate-800">{item.title}</p>
+                  Chat baru
+                </button>
+              </div>
 
-                  <p className="mt-1 text-xs text-slate-500">
-                    Estimasi {item.estimatedMinutes} menit
-                  </p>
+              <div className="max-h-[420px] space-y-3 overflow-y-auto">
+                {messages.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`flex ${
+                      item.role === "user" ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    <div
+                      className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 ${
+                        item.role === "user"
+                          ? "rounded-br-md bg-[#17664E] text-white"
+                          : "rounded-bl-md bg-[#F3F7F0] text-[#183D32]"
+                      }`}
+                    >
+                      {item.content}
+                    </div>
+                  </div>
+                ))}
 
-                  <p className="mt-2 text-xs text-slate-600">
-                    {item.rationale}
-                  </p>
+                {chatLoading && (
+                  <div className="flex items-center gap-2 text-sm text-[#82978A]">
+                    <LoaderCircle size={17} className="animate-spin" />
+                    AI sedang berpikir...
+                  </div>
+                )}
+              </div>
 
-                  <div className="mt-3">
-                    <label className="mb-1 block text-xs text-slate-500">
-                      Tanggal
-                    </label>
-                    <input
-                      type="date"
-                      value={item.date}
-                      onChange={(event) =>
-                        updateDraftItem(index, "date", event.target.value)
-                      }
-                      className="w-full rounded-lg border border-slate-200 p-2 text-sm"
-                    />
+              {chatError && (
+                <p
+                  role="alert"
+                  className="rounded-xl bg-[#FFF3F0] p-3 text-sm text-[#943F35]"
+                >
+                  {chatError}
+                </p>
+              )}
+
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleSend();
+                }}
+                className="flex items-end gap-2 border-t border-[#E2EAE0] pt-3"
+              >
+                <textarea
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter" &&
+                      !event.shiftKey &&
+                      !event.nativeEvent.isComposing
+                    ) {
+                      event.preventDefault();
+                      void handleSend();
+                    }
+                  }}
+                  placeholder="Tulis pertanyaanmu..."
+                  rows={2}
+                  className="min-w-0 flex-1 resize-none rounded-xl border border-[#E2EAE0] bg-[#F9FBF8] px-3 py-3 text-sm text-[#183D32] outline-none placeholder:text-[#82978A] focus:border-[#17664E] focus:ring-2 focus:ring-[#DCEBDD]"
+                />
+                <button
+                  type="submit"
+                  disabled={!message.trim() || chatLoading}
+                  aria-label="Kirim pesan"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#17664E] text-white transition hover:bg-[#12513E] disabled:opacity-50"
+                >
+                  {chatLoading ? (
+                    <LoaderCircle size={19} className="animate-spin" />
+                  ) : (
+                    <Send size={18} />
+                  )}
+                </button>
+              </form>
+            </section>
+
+            <section className={cardStyle}>
+              <h3 className="mb-3 text-sm font-bold">Coba tanyakan ini</h3>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  "Bantu aku menentukan prioritas tugas",
+                  "Bagaimana cara mulai belajar?",
+                  "Buat strategi belajar yang realistis",
+                ].map((suggestion) => (
+                  <button
+                    type="button"
+                    key={suggestion}
+                    onClick={() => setMessage(suggestion)}
+                    className="rounded-full border border-[#E2EAE0] px-3 py-2 text-left text-xs text-[#466B59] transition hover:border-[#17664E] hover:bg-[#F3F7F0]"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className={cardStyle}>
+              <div className="mb-3 flex items-center gap-2">
+                <ClipboardList size={19} className="text-[#17664E]" />
+                <h2 className="font-bold">Ubah ide menjadi tugas</h2>
+              </div>
+              <p className="mb-3 text-sm leading-6 text-[#82978A]">
+                Tulis instruksi tugas beserta mata kuliah dan deadline jika
+                tersedia. AI akan mencoba menyusun detail serta subtask-nya.
+              </p>
+
+              <textarea
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder="Contoh: Aku harus membuat laporan praktikum sebelum Jumat..."
+                rows={3}
+                className="w-full rounded-xl border border-[#E2EAE0] bg-[#F9FBF8] px-3 py-3 text-sm text-[#183D32] outline-none placeholder:text-[#82978A] focus:border-[#17664E] focus:ring-2 focus:ring-[#DCEBDD]"
+              />
+
+              <button
+                type="button"
+                onClick={() => void handleGenerateTask()}
+                disabled={!message.trim() || taskLoading}
+                className={`${primaryButton} mt-3 w-full`}
+              >
+                {taskLoading ? (
+                  <LoaderCircle size={17} className="animate-spin" />
+                ) : (
+                  <Sparkles size={17} />
+                )}
+                Buat tugas dengan AI
+              </button>
+
+              {taskError && (
+                <p
+                  role="alert"
+                  className="mt-3 rounded-xl bg-[#FFF3F0] p-3 text-sm text-[#943F35]"
+                >
+                  {taskError}
+                </p>
+              )}
+
+              {taskSaved && (
+                <p className="mt-3 rounded-xl bg-[#DCEBDD] p-3 text-sm text-[#17664E]">
+                  <Check size={16} className="mr-1 inline" />
+                  Tugas berhasil ditambahkan.
+                </p>
+              )}
+
+              {generatedTask && (
+                <div className="mt-4 space-y-3 rounded-xl border border-[#E2EAE0] bg-[#F9FBF8] p-4">
+                  <div>
+                    <p className="text-xs font-medium text-[#82978A]">
+                      HASIL AI
+                    </p>
+                    <h3 className="mt-1 font-bold">{generatedTask.title}</h3>
+                    <p className="mt-1 text-sm text-[#82978A]">
+                      {generatedTask.course || "Mata kuliah belum diisi"}
+                    </p>
                   </div>
 
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="mb-1 block text-xs text-slate-500">
-                        Mulai
-                      </label>
-                      <input
-                        type="time"
-                        value={item.startTime}
-                        onChange={(event) =>
-                          updateDraftItem(
-                            index,
-                            "startTime",
-                            event.target.value,
-                          )
-                        }
-                        className="w-full rounded-lg border border-slate-200 p-2 text-sm"
-                      />
-                    </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="rounded-full bg-[#DCEBDD] px-3 py-1.5 text-[#17664E]">
+                      {generatedTask.priority}
+                    </span>
+                    <span className="rounded-full bg-white px-3 py-1.5 text-[#466B59]">
+                      {generatedTask.estimatedMinutes} menit
+                    </span>
+                    <span className="rounded-full bg-white px-3 py-1.5 text-[#466B59]">
+                      Deadline: {generatedTask.dueDate}
+                    </span>
+                  </div>
 
-                    <div>
-                      <label className="mb-1 block text-xs text-slate-500">
-                        Selesai
-                      </label>
-                      <input
-                        type="time"
-                        value={item.endTime}
-                        onChange={(event) =>
-                          updateDraftItem(index, "endTime", event.target.value)
-                        }
-                        className="w-full rounded-lg border border-slate-200 p-2 text-sm"
-                      />
-                    </div>
+                  {generatedTask.expectedOutput && (
+                    <p className="text-sm leading-6 text-[#466B59]">
+                      {generatedTask.expectedOutput}
+                    </p>
+                  )}
+
+                  <div>
+                    <h4 className="mb-2 text-sm font-semibold">
+                      Langkah pengerjaan
+                    </h4>
+                    <ul className="space-y-2">
+                      {generatedTask.subtasks.map((subtask) => (
+                        <li
+                          key={subtask.id}
+                          className="flex items-start justify-between gap-3 text-sm"
+                        >
+                          <span>{subtask.title}</span>
+                          <span className="shrink-0 text-xs text-[#82978A]">
+                            {subtask.estimatedMinutes} mnt
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => removeDraftItem(index)}
-                    className="mt-3 flex items-center gap-2 text-xs text-red-600"
+                    onClick={handleAddTask}
+                    className={`${primaryButton} w-full`}
                   >
-                    <Trash2 size={14} />
-                    Hapus dari draft
+                    <Plus size={17} />
+                    Tambahkan ke Tugas
                   </button>
                 </div>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={handleApproveSchedule}
-              disabled={scheduleSaved || scheduleDraft.schedules.length === 0}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              <Check size={17} />
-              Setujui dan Simpan ke Planner
-            </button>
-          </div>
-        )}
-      </section>
-
-      <section className="mt-6 space-y-3">
-        {messages.map((item) => (
-          <div
-            key={item.id}
-            className={`flex ${
-              item.role === "user" ? "justify-end" : "justify-start"
-            }`}
-          >
-            <div
-              className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                item.role === "user"
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-700"
-              }`}
-            >
-              {item.content}
-            </div>
-          </div>
-        ))}
-
-        {chatLoading && (
-          <p className="text-sm text-slate-400">AI sedang berpikir...</p>
-        )}
-      </section>
-
-      {generatedTask && (
-        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-medium text-slate-400">
-                Tugas dari AI
-              </p>
-              <h2 className="mt-1 text-lg font-semibold text-slate-900">
-                {generatedTask.title}
-              </h2>
-            </div>
-
-            <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-600">
-              {generatedTask.priority}
-            </span>
-          </div>
-
-          <div className="mt-4 space-y-2 text-xs text-slate-500">
-            <p>
-              Mata kuliah:{" "}
-              <span className="font-medium text-slate-700">
-                {generatedTask.course || "Belum ditentukan"}
-              </span>
-            </p>
-
-            <p>
-              Deadline:{" "}
-              <span className="font-medium text-slate-700">
-                {generatedTask.dueDate || "Belum ditentukan"}
-              </span>
-            </p>
-
-            <p>
-              Estimasi:{" "}
-              <span className="font-medium text-slate-700">
-                {generatedTask.estimatedMinutes} menit
-              </span>
-            </p>
-          </div>
-
-          <div className="mt-5">
-            <p className="text-sm font-semibold text-slate-800">Subtask</p>
-
-            <div className="mt-3 space-y-2">
-              {generatedTask.subtasks.map((subtask) => (
-                <div
-                  key={subtask.id}
-                  className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-3"
-                >
-                  <div className="flex h-5 w-5 items-center justify-center rounded-md border border-slate-300 bg-white">
-                    <span className="text-[10px] text-slate-400">
-                      {subtask.id}
-                    </span>
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-slate-700">{subtask.title}</p>
-                    <p className="mt-1 text-xs text-slate-400">
-                      {subtask.estimatedMinutes} menit
-                    </p>
-                  </div>
+              )}
+            </section>
+          </>
+        ) : (
+          <>
+            <section className="rounded-2xl bg-[#DCEBDD] p-4">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl bg-white p-2 text-[#17664E]">
+                  <CalendarClock size={21} />
                 </div>
-              ))}
-            </div>
-          </div>
+                <div>
+                  <h2 className="font-bold">Rencanakan waktu belajarmu</h2>
+                  <p className="mt-1 text-sm leading-6 text-[#466B59]">
+                    AI menyusun sesi belajar berdasarkan tugas dan waktu yang
+                    kamu sediakan. Kamu tetap bisa mengedit jadwal sebelum
+                    menyimpannya.
+                  </p>
+                </div>
+              </div>
+            </section>
 
-          <button
-            type="button"
-            onClick={handleAddTask}
-            disabled={taskAdded}
-            className={`mt-5 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
-              taskAdded
-                ? "bg-green-100 text-green-700"
-                : "bg-slate-900 text-white hover:bg-slate-800"
-            }`}
-          >
-            {taskAdded ? (
-              <>
-                <Check size={17} />
-                Tugas Berhasil Ditambahkan
-              </>
-            ) : (
-              <>
-                <Plus size={17} />
-                Tambahkan ke Tugas
-              </>
+            <section className={`${cardStyle} space-y-4`}>
+              <h2 className="font-bold">Preferensi jadwal</h2>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  Tanggal rencana
+                </label>
+                <input
+                  type="date"
+                  value={plannerDate}
+                  min={today()}
+                  onChange={(event) => setPlannerDate(event.target.value)}
+                  className="w-full rounded-xl border border-[#E2EAE0] bg-[#F9FBF8] px-3 py-3 text-sm outline-none focus:border-[#17664E]"
+                />
+              </div>
+
+              <div>
+                <p className="mb-2 text-sm font-medium">Waktu luang</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="text-xs text-[#82978A]">
+                    Mulai
+                    <input
+                      type="time"
+                      value={freeStart}
+                      onChange={(event) => setFreeStart(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-[#E2EAE0] bg-[#F9FBF8] px-3 py-3 text-sm text-[#183D32]"
+                    />
+                  </label>
+                  <label className="text-xs text-[#82978A]">
+                    Selesai
+                    <input
+                      type="time"
+                      value={freeEnd}
+                      onChange={(event) => setFreeEnd(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-[#E2EAE0] bg-[#F9FBF8] px-3 py-3 text-sm text-[#183D32]"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-sm font-medium">Jam belajar pilihan</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="text-xs text-[#82978A]">
+                    Mulai
+                    <input
+                      type="time"
+                      value={preferredStart}
+                      onChange={(event) =>
+                        setPreferredStart(event.target.value)
+                      }
+                      className="mt-1 w-full rounded-xl border border-[#E2EAE0] bg-[#F9FBF8] px-3 py-3 text-sm text-[#183D32]"
+                    />
+                  </label>
+                  <label className="text-xs text-[#82978A]">
+                    Selesai
+                    <input
+                      type="time"
+                      value={preferredEnd}
+                      onChange={(event) => setPreferredEnd(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-[#E2EAE0] bg-[#F9FBF8] px-3 py-3 text-sm text-[#183D32]"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-sm">
+                  <span className="mb-2 block font-medium">Durasi sesi</span>
+                  <select
+                    value={sessionMinutes}
+                    onChange={(event) =>
+                      setSessionMinutes(Number(event.target.value))
+                    }
+                    className="w-full rounded-xl border border-[#E2EAE0] bg-[#F9FBF8] px-3 py-3 text-sm"
+                  >
+                    <option value={25}>25 menit</option>
+                    <option value={45}>45 menit</option>
+                    <option value={50}>50 menit</option>
+                    <option value={60}>60 menit</option>
+                    <option value={90}>90 menit</option>
+                  </select>
+                </label>
+
+                <label className="text-sm">
+                  <span className="mb-2 block font-medium">
+                    Waktu istirahat
+                  </span>
+                  <select
+                    value={breakMinutes}
+                    onChange={(event) =>
+                      setBreakMinutes(Number(event.target.value))
+                    }
+                    className="w-full rounded-xl border border-[#E2EAE0] bg-[#F9FBF8] px-3 py-3 text-sm"
+                  >
+                    <option value={5}>5 menit</option>
+                    <option value={10}>10 menit</option>
+                    <option value={15}>15 menit</option>
+                    <option value={20}>20 menit</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="rounded-xl bg-[#F3F7F0] p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-[#466B59]">
+                    Tugas yang belum selesai
+                  </span>
+                  <span className="font-bold">{unfinishedTasks.length}</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="text-sm text-[#466B59]">
+                    Agenda di Planner
+                  </span>
+                  <span className="font-bold">{plannerItems.length}</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void handleGenerateSchedule()}
+                disabled={scheduleLoading}
+                className={`${primaryButton} w-full`}
+              >
+                {scheduleLoading ? (
+                  <LoaderCircle size={17} className="animate-spin" />
+                ) : (
+                  <Sparkles size={17} />
+                )}
+                Buat jadwal dengan AI
+              </button>
+
+              {scheduleError && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-[#F0D0CA] bg-[#FFF3F0] p-3 text-sm leading-6 text-[#943F35]"
+                >
+                  <AlertCircle size={17} className="mr-1 inline" />
+                  {scheduleError}
+                </div>
+              )}
+            </section>
+
+            {scheduleNotes.length > 0 && (
+              <section className={cardStyle}>
+                <h3 className="mb-2 font-bold">Catatan AI</h3>
+                <ul className="space-y-2 text-sm leading-6 text-[#466B59]">
+                  {scheduleNotes.map((note, index) => (
+                    <li key={`${index}-${note}`}>• {note}</li>
+                  ))}
+                </ul>
+              </section>
             )}
-          </button>
-        </section>
-      )}
 
-      <section className="mt-6">
-        <p className="text-xs font-medium text-slate-400">Coba tanyakan</p>
+            {scheduleDraft.length > 0 && (
+              <section className={`${cardStyle} space-y-4`}>
+                <div>
+                  <h2 className="font-bold">Pratinjau jadwal</h2>
+                  <p className="mt-1 text-sm text-[#82978A]">
+                    Periksa dan edit jadwal sebelum memasukkannya ke Planner.
+                  </p>
+                </div>
 
-        <div className="mt-3 space-y-2">
-          {[
-            "Aku punya banyak tugas, bantu prioritaskan.",
-            "Pecah tugas makalah menjadi beberapa langkah.",
-            "Bantu buat jadwal belajar hari ini.",
-          ].map((suggestion) => (
-            <button
-              key={suggestion}
-              type="button"
-              onClick={() => setMessage(suggestion)}
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm text-slate-700 transition hover:bg-slate-50"
-            >
-              {suggestion}
-            </button>
-          ))}
-        </div>
-      </section>
+                <div className="space-y-3">
+                  {scheduleDraft.map((item, index) => (
+                    <div
+                      key={`${item.taskId}-${item.subTaskId}-${index}`}
+                      className="rounded-xl border border-[#E2EAE0] bg-[#F9FBF8] p-3"
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <input
+                            value={item.title}
+                            onChange={(event) =>
+                              updateSchedule(index, "title", event.target.value)
+                            }
+                            aria-label={`Judul sesi ${index + 1}`}
+                            className="w-full rounded-lg border border-[#E2EAE0] bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-[#17664E]"
+                          />
+                          <p className="mt-2 text-xs text-[#82978A]">
+                            {item.rationale}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeSchedule(index)}
+                          aria-label={`Hapus sesi ${index + 1}`}
+                          className="rounded-lg p-2 text-[#82978A] transition hover:bg-[#F5D1CC] hover:text-[#943F35]"
+                        >
+                          <Trash2 size={17} />
+                        </button>
+                      </div>
 
-      <section className="mt-6">
-        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2">
-          <input
-            type="text"
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") handleSend();
-            }}
-            placeholder="Ceritakan tugasmu..."
-            className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-          />
+                      <label className="mt-3 block text-xs text-[#82978A]">
+                        Tanggal
+                        <input
+                          type="date"
+                          value={item.date}
+                          onChange={(event) =>
+                            updateSchedule(index, "date", event.target.value)
+                          }
+                          className="mt-1 w-full rounded-lg border border-[#E2EAE0] bg-white px-3 py-2 text-sm text-[#183D32]"
+                        />
+                      </label>
 
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={!message.trim() || chatLoading}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Send size={17} />
-          </button>
-        </div>
-      </section>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <label className="text-xs text-[#82978A]">
+                          Mulai
+                          <input
+                            type="time"
+                            value={item.startTime}
+                            onChange={(event) =>
+                              updateSchedule(
+                                index,
+                                "startTime",
+                                event.target.value,
+                              )
+                            }
+                            className="mt-1 w-full rounded-lg border border-[#E2EAE0] bg-white px-3 py-2 text-sm text-[#183D32]"
+                          />
+                        </label>
+                        <label className="text-xs text-[#82978A]">
+                          Selesai
+                          <input
+                            type="time"
+                            value={item.endTime}
+                            onChange={(event) =>
+                              updateSchedule(
+                                index,
+                                "endTime",
+                                event.target.value,
+                              )
+                            }
+                            className="mt-1 w-full rounded-lg border border-[#E2EAE0] bg-white px-3 py-2 text-sm text-[#183D32]"
+                          />
+                        </label>
+                      </div>
+
+                      <p className="mt-2 flex items-center gap-1 text-xs text-[#82978A]">
+                        <Clock3 size={13} />
+                        Estimasi {item.estimatedMinutes} menit
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {scheduleError && (
+                  <p
+                    role="alert"
+                    className="rounded-xl bg-[#FFF3F0] p-3 text-sm text-[#943F35]"
+                  >
+                    {scheduleError}
+                  </p>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleApproveSchedule}
+                  disabled={scheduleSaved || scheduleDraft.length === 0}
+                  className={`${primaryButton} w-full`}
+                >
+                  <Check size={17} />
+                  {scheduleSaved
+                    ? "Jadwal berhasil disimpan"
+                    : "Simpan ke Planner"}
+                </button>
+
+                {scheduleSaved && (
+                  <p className="text-center text-sm text-[#17664E]">
+                    Jadwal sudah ditambahkan ke Planner.
+                  </p>
+                )}
+              </section>
+            )}
+          </>
+        )}
+      </div>
     </main>
   );
 }
