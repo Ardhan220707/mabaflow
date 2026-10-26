@@ -8,6 +8,7 @@ import {
   Target,
 } from "lucide-react";
 import MabaFlowCalendar from "@/components/dashboard/mabaflow-calendar";
+import AuthStatus from "@/components/auth-status";
 
 export default function BerandaPage() {
   return (
@@ -30,6 +31,12 @@ export default function BerandaPage() {
           <Target size={22} />
         </div>
       </header>
+
+      {/* Status Akun */}
+      <section className="rounded-2xl border border-[#E2EAE0] bg-white p-4 shadow-sm">
+        <p className="mb-3 text-sm font-bold">Akun MabaFlow</p>
+        <AuthStatus />
+      </section>
 
       {/* Kalender */}
       <section>

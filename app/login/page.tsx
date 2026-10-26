@@ -21,17 +21,23 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    const { error } = await supabase.auth.signInWithPassword({
+    console.log("Login attempt:", { email: email.trim(), passwordLength: password.length });
+    
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
 
+    console.log("Login result:", { data, error });
+    
     if (error) {
-      setError("Email atau password salah. Coba periksa kembali.");
+      console.log("Error details:", error.code, error.status, error.message);
+      setError(`Login gagal: ${error.message} (code: ${error.code})`);
       setLoading(false);
       return;
     }
 
+    console.log("Login success, redirecting to /beranda");
     router.replace("/beranda");
     router.refresh();
   }
@@ -153,7 +159,16 @@ export default function LoginPage() {
           Masuk dengan Google
         </button>
 
-        <p className="mt-7 text-center text-sm text-gray-500">
+        <div className="mt-5 text-center">
+          <Link
+            href="/forgot-password"
+            className="text-sm font-medium text-[#58764e] hover:underline"
+          >
+            Lupa password?
+          </Link>
+        </div>
+
+        <p className="mt-5 text-center text-sm text-gray-500">
           Belum punya akun?{" "}
           <Link
             href="/register"
