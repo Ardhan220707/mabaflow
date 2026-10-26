@@ -8,7 +8,13 @@ import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 
 export default function AuthStatus() {
-  const supabase = useMemo(() => createClient(), []);
+  const supabase = useMemo(() => {
+    try {
+      return createClient();
+    } catch {
+      return null;
+    }
+  }, []);
   const router = useRouter();
 
   const [user, setUser] = useState<User | null>(null);
@@ -16,6 +22,11 @@ export default function AuthStatus() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
+
     let active = true;
 
     const {
