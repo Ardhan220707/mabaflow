@@ -23,8 +23,6 @@ export default function ForgotPasswordPage() {
 
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
       redirectTo: `${window.location.origin}/reset-password`,
-    }, {
-      captchaToken: undefined,
     });
 
     console.log("Reset password result:", error);

@@ -1,4 +1,4 @@
-import { createServerClient, type EmailOtpType } from "@supabase/ssr";
+import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
 
   const { error } = await supabase.auth.verifyOtp({
     token_hash: tokenHash,
-    type: type as EmailOtpType,
+    type: type as "email" | "signup" | "invite" | "recovery" | "email_change_current" | "email_change_new",
   });
 
   if (error) {

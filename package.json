@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.27.0",
+    "@supabase/auth-helpers-react": "^0.15.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",
     "lucide-react": "^1.48.0",
@@ -30,6 +31,8 @@
     "typescript": "^5"
   },
   "allowScripts": {
-    "unrs-resolver@1.12.2": true
+    "unrs-resolver@1.12.2": true,
+    "@google/genai": true,
+    "protobufjs": true
   }
 }

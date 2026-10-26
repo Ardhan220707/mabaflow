@@ -1,26 +1,26 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { TaskWithSubtasks } from "@/lib/database/task-service";
 import type { Task } from "@/lib/types/mapping";
+import { mapTaskToDatabase, mapDatabaseToTaskArray } from "@/lib/types/mapping";
 
 type TaskStore = {
-  tasks: TaskWithSubtasks[];
+  tasks: Task[];
 
-  setTasks: (tasks: TaskWithSubtasks[]) => void;
+  setTasks: (tasks: Task[]) => void;
 
-  toggleTask: (id: string) => void;
+  toggleTask: (id: number) => void;
 
-  toggleSubTask: (taskId: string, subTaskId: string) => void;
+  toggleSubTask: (taskId: number, subTaskId: number) => void;
 
   setSubTaskCompleted: (
-    taskId: string,
-    subTaskId: string,
+    taskId: number,
+    subTaskId: number,
     completed: boolean,
   ) => void;
 
-  setTaskCompleted: (taskId: string, completed: boolean) => void;
+  setTaskCompleted: (taskId: number, completed: boolean) => void;
 
-  addTask: (task: TaskWithSubtasks) => void;
+  addTask: (task: Task) => void;
 };
 
 const initialTasks: Task[] = [];

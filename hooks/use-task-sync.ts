@@ -1,12 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useUser } from '@supabase/auth-helpers-react';
+import { createClient } from '@/lib/supabase/client';
 import { taskService, type TaskWithSubtasks } from '@/lib/database/task-service';
 import { useTaskStore } from '@/stores/task-store';
+import { mapDatabaseToTaskArray } from '@/lib/types/mapping';
+import type { Task } from '@/lib/types/mapping';
 
 export function useTaskSync() {
-  const { user } = useUser();
+  const supabase = createClient();
+  const [user, setUser] = useState<any>(null);
   const { tasks, setTasks, addTask, setTaskCompleted, toggleSubTask, setSubTaskCompleted } = useTaskStore();
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -14,7 +17,7 @@ export function useTaskSync() {
     setIsSyncing(true);
     try {
       const dbTasks = await taskService.getTasks(userId);
-      setTasks(dbTasks);
+      setTasks(mapDatabaseToTaskArray(dbTasks));
     } catch (error) {
       console.error('Failed to load tasks:', error);
     } finally {
@@ -43,30 +46,50 @@ export function useTaskSync() {
     }
   };
 
-  const handleAddTask = async (task: TaskWithSubtasks) => {
+  const handleAddTask = async (task: Task) => {
+    if (!user) return;
+
+    const taskWithSubtasks: TaskWithSubtasks = {
+      id: String(task.id),
+      user_id: user.id,
+      title: task.title,
+      course: task.course,
+      due_date: task.dueDate,
+      estimated_minutes: task.estimatedMinutes,
+      expected_output: task.expectedOutput || null,
+      priority: task.priority,
+      completed: task.completed,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      subtasks: task.subtasks.map(subtask => ({
+        id: String(subtask.id),
+        task_id: String(task.id),
+        title: subtask.title,
+        estimated_minutes: subtask.estimatedMinutes,
+        completed: subtask.completed,
+        created_at: new Date().toISOString(),
+      })),
+    };
+
     addTask(task);
-    if (user) {
-      await syncToDatabase(task);
-    }
+    await syncToDatabase(taskWithSubtasks);
   };
 
-  const handleToggleTask = async (taskId: string) => {
+  const handleToggleTask = async (taskId: number) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
 
     setTaskCompleted(taskId, !task.completed);
 
-    if (user) {
-      try {
-        await taskService.updateTask(taskId, { completed: !task.completed });
-      } catch (error) {
-        console.error('Failed to update task completion:', error);
-        setTaskCompleted(taskId, task.completed);
-      }
+    try {
+      await taskService.updateTask(String(taskId), { completed: !task.completed });
+    } catch (error) {
+      console.error('Failed to update task completion:', error);
+      setTaskCompleted(taskId, task.completed);
     }
   };
 
-  const handleToggleSubTask = async (taskId: string, subTaskId: string) => {
+  const handleToggleSubTask = async (taskId: number, subTaskId: number) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
 
@@ -75,41 +98,43 @@ export function useTaskSync() {
 
     toggleSubTask(taskId, subTaskId);
 
-    if (user) {
-      try {
-        await taskService.toggleSubtask(subTaskId);
-        await taskService.updateTaskCompletion(taskId);
-      } catch (error) {
-        console.error('Failed to update subtask:', error);
-        toggleSubTask(taskId, subTaskId);
-      }
+    try {
+      await taskService.toggleSubtask(String(subTaskId));
+      await taskService.updateTaskCompletion(String(taskId));
+    } catch (error) {
+      console.error('Failed to update subtask:', error);
+      toggleSubTask(taskId, subTaskId);
     }
   };
 
-  const handleSetSubTaskCompleted = async (taskId: string, subTaskId: string, completed: boolean) => {
+  const handleSetSubTaskCompleted = async (taskId: number, subTaskId: number, completed: boolean) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
 
     setSubTaskCompleted(taskId, subTaskId, completed);
 
-    if (user) {
-      try {
-        await taskService.updateSubtask(subTaskId, { completed });
-        await taskService.updateTaskCompletion(taskId);
-      } catch (error) {
-        console.error('Failed to update subtask:', error);
-        setSubTaskCompleted(taskId, subTaskId, !completed);
-      }
+    try {
+      await taskService.updateSubtask(String(subTaskId), { completed });
+      await taskService.updateTaskCompletion(String(taskId));
+    } catch (error) {
+      console.error('Failed to update subtask:', error);
+      setSubTaskCompleted(taskId, subTaskId, !completed);
     }
   };
 
   useEffect(() => {
-    if (user) {
-      loadTasks(user.id);
-    } else {
-      setTasks([]);
-    }
-  }, [user]);
+    const getUser = async () => {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      setUser(currentUser);
+      if (currentUser) {
+        await loadTasks(currentUser.id);
+      } else {
+        setTasks([]);
+      }
+    };
+
+    getUser();
+  }, []);
 
   return {
     tasks,
