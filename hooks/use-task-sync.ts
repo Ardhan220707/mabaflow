@@ -18,7 +18,11 @@ export function useTaskSync() {
     try {
       const dbTasks = await taskService.getTasks(userId);
       setTasks(mapDatabaseToTaskArray(dbTasks));
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes('Supabase environment variables')) {
+        console.warn('Supabase not configured, skipping task sync');
+        return;
+      }
       console.error('Failed to load tasks:', error);
     } finally {
       setIsSyncing(false);
@@ -124,11 +128,22 @@ export function useTaskSync() {
 
   useEffect(() => {
     const getUser = async () => {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      setUser(currentUser);
-      if (currentUser) {
-        await loadTasks(currentUser.id);
-      } else {
+      if (!supabase) {
+        console.warn('Supabase client not available');
+        setTasks([]);
+        return;
+      }
+
+      try {
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        setUser(currentUser);
+        if (currentUser) {
+          await loadTasks(currentUser.id);
+        } else {
+          setTasks([]);
+        }
+      } catch (error) {
+        console.warn('Failed to get user:', error);
         setTasks([]);
       }
     };
