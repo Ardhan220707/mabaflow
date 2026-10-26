@@ -17,7 +17,7 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     // Cek apakah ada session reset password
-    supabase.auth.onAuthStateChange(async (event, session) => {
+    supabase.auth.onAuthStateChange(async (event: any, session: any) => {
       console.log("Auth state change:", event, session);
       
       if (event === "PASSWORD_RECOVERY") {

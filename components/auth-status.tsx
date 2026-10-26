@@ -31,14 +31,14 @@ export default function AuthStatus() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
       if (!active) return;
 
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    supabase.auth.getSession().then(({ data, error }) => {
+    supabase.auth.getSession().then(({ data, error }: any) => {
       if (!active) return;
 
       if (error) {
